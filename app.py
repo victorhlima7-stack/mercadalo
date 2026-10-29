@@ -12,7 +12,7 @@ st.set_page_config(
 st.title("🛒 Simulador e Comparador de Compras de Supermercado")
 st.markdown("Compare preços de supermercados locais, descubra onde a compra total fica mais barata e veja onde vale a pena fracionar a lista.")
 
-# Tabela inicial de dados (pode ser editada no próprio site)
+# Tabela inicial de dados
 dados_iniciais = {
     "Item": ["Arroz Tipo 1 5kg", "Feijão Carioca 1kg", "Leite Integral 1L", "Óleo de Soja 900ml", "Café Torrado 500g", "Detergente Líquido 500ml", "Sabão em Pó 1kg"],
     "Categoria": ["Grãos", "Grãos", "Laticínios", "Óleos", "Matinais", "Limpeza", "Limpeza"],
@@ -46,7 +46,7 @@ if not df_editado.empty:
     df_editado["Total Mercado C"] = df_editado["Quantidade"] * df_editado["Mercado C (R$)"]
 
     # Menor preço unitário e mercado mais vantajoso por item
-     precos_unidade = df_editado[["Mercado A (R$)", "Mercado B (R$)", "Mercado C (R$)"]]
+    precos_unidade = df_editado[["Mercado A (R$)", "Mercado B (R$)", "Mercado C (R$)"]]
     df_editado["Menor Preço Unid."] = precos_unidade.min(axis=1)
     
     def encontrar_melhor_mercado(row):
