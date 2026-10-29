@@ -1,5 +1,6 @@
-import streamlit as st
+import os
 import pandas as pd
+import streamlit as st
 
 # Configuração da página
 st.set_page_config(
@@ -9,9 +10,24 @@ st.set_page_config(
 )
 
 st.title("🛒 Simulador e Comparador de Compras de Supermercado")
-st.markdown("Compare preços de supermercados locais, descubra onde a compra total fica mais barata e veja onde vale a pena fracionar a lista.")
+st.markdown("Compare preços de supermercados locais, descubra onde a compra total fica mais barata e veja quanto economiza dividindo a lista.")
 
-# Tabela inicial de dados
+# Painel Lateral
+st.sidebar.header("⚙️ Opções e Dados")
+
+# Upload de arquivo próprio (opcional)
+arquivo_enviado = st.sidebar.file_uploader("Carregar arquivo de preços (CSV/Excel)", type=["csv", "xlsx"])
+
+# Destaques e Ofertas da Semana
+st.sidebar.markdown("---")
+st.sidebar.header("🔥 Destaques da Semana")
+st.sidebar.info(
+    "**Mercado A:** Quarta do Hortifrúti (até 30% desc.)\n\n"
+    "**Mercado B:** Sexta da Carne e Laticínios\n\n"
+    "**Mercado C:** Fim de semana da Limpeza"
+)
+
+# Dados Padrão (Caso o robô ou upload ainda não tenham sido executados)
 dados_iniciais = {
     "Item": ["Arroz Tipo 1 5kg", "Feijão Carioca 1kg", "Leite Integral 1L", "Óleo de Soja 900ml", "Café Torrado 500g", "Detergente Líquido 500ml", "Sabão em Pó 1kg"],
     "Categoria": ["Grãos", "Grãos", "Laticínios", "Óleos", "Matinais", "Limpeza", "Limpeza"],
@@ -21,73 +37,82 @@ dados_iniciais = {
     "Mercado C (R$)": [23.90, 7.20, 4.79, 5.99, 19.00, 2.10, 13.90]
 }
 
-# Painel Lateral: Destaques e Ofertas
-st.sidebar.header("🔥 Destaques & Ofertas da Semana")
-st.sidebar.info("**Mercado A:** Quarta-feira do Hortifrúti (Descontos até 30%)\n\n**Mercado B:** Sexta da Carne e Laticínios\n\n**Mercado C:** Fim de semana da Limpeza")
+# Lógica de carregamento dos dados
+if arquivo_enviado is not None:
+    try:
+        if arquivo_enviado.name.endswith(".csv"):
+            df_base = pd.read_csv(arquivo_enviado)
+        else:
+            df_base = pd.read_excel(arquivo_enviado)
+        st.sidebar.success("Ficheiro personalizado carregado!")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao ler arquivo: {e}")
+        df_base = pd.DataFrame(dados_iniciais)
+elif os.path.exists("precos_atualizados.csv"):
+    df_base = pd.read_csv("precos_atualizados.csv")
+    st.sidebar.success("🤖 Dados do robô (`precos_atualizados.csv`) carregados!")
+else:
+    df_base = pd.DataFrame(dados_iniciais)
+    st.sidebar.info("Usando lista de preços padrão.")
 
-# Tabela interativa para os utilizadores editarem preços e quantidades
-st.subheader("1. Edite os itens, quantidades e preços conhecidos")
+st.subheader("1. Tabela de Preços e Quantidades (Interativa)")
+st.caption("Pode editar valores, adicionar novos produtos ou alterar quantidades diretamente na tabela abaixo.")
+
 df_editado = st.data_editor(
-    pd.DataFrame(dados_iniciais),
+    df_base,
     num_rows="dynamic",
     use_container_width=True
 )
 
-# Cálculos em tempo real
+# Processamento e Cálculos
 if not df_editado.empty:
-    # Garantir conversão numérica
-    for col in ["Quantidade", "Mercado A (R$)", "Mercado B (R$)", "Mercado C (R$)"]:
-        df_editado[col] = pd.to_numeric(df_editado[col], errors="coerce").fillna(0)
-
-    # Calcular totais por mercado por linha
-    df_editado["Total Mercado A"] = df_editado["Quantidade"] * df_editado["Mercado A (R$)"]
-    df_editado["Total Mercado B"] = df_editado["Quantidade"] * df_editado["Mercado B (R$)"]
-    df_editado["Total Mercado C"] = df_editado["Quantidade"] * df_editado["Mercado C (R$)"]
-
-    # Menor preço unitário e mercado mais vantajoso por item
-    precos_unidade = df_editado[["Mercado A (R$)", "Mercado B (R$)", "Mercado C (R$)"]]
-    df_editado["Menor Preço Unid."] = precos_unidade.min(axis=1)
+    # Identifica colunas de mercado
+    colunas_mercado = [c for c in df_editado.columns if "(R$)" in c]
     
-    def encontrar_melhor_mercado(row):
+    if not colunas_mercado:
+        # Se não houver "(R$)", pega colunas numéricas exceto Quantidade
+        colunas_mercado = [c for c in df_editado.columns if c not in ["Item", "Categoria", "Quantidade"]]
+
+    # Garante conversão numérica para Quantidade e Mercados
+    if "Quantidade" in df_editado.columns:
+        df_editado["Quantidade"] = pd.to_numeric(df_editado["Quantidade"], errors="coerce").fillna(1).astype(float)
+    else:
+        df_editado["Quantidade"] = 1.0
+
+    for col in colunas_mercado:
+        df_editado[col] = pd.to_numeric(df_editado[col], errors="coerce").fillna(0).astype(float)
+
+    # Menor preço por item entre os mercados
+    df_editado["Menor Preço Unid."] = df_editado[colunas_mercado].min(axis=1)
+
+    # Identifica qual mercado tem o menor preço
+    def qual_melhor_mercado(row):
         menor = row["Menor Preço Unid."]
-        if row["Mercado A (R$)"] == menor:
-            return "Mercado A"
-        elif row["Mercado B (R$)"] == menor:
-            return "Mercado B"
-        else:
-            return "Mercado C"
+        if menor == 0:
+            return "Sem dados"
+        melhores = [col for col in colunas_mercado if row[col] == menor]
+        return ", ".join(melhores).replace(" (R$)", "")
 
-    df_editado["Melhor Opção"] = df_editado.apply(encontrar_melhor_mercado, axis=1)
-    df_editado["Total Otimizado"] = df_editado["Quantidade"] * df_editado["Menor Preço Unid."]
+    df_editado["Melhor Opção"] = df_editado.apply(qual_melhor_mercado, axis=1)
+    df_editado["Subtotal Otimizado (R$)"] = df_editado["Quantidade"] * df_editado["Menor Preço Unid."]
 
-    # Totais Globais
-    total_a = df_editado["Total Mercado A"].sum()
-    total_b = df_editado["Total Mercado B"].sum()
-    total_c = df_editado["Total Mercado C"].sum()
-    total_dividido = df_editado["Total Otimizado"].sum()
+    # Totais Globais por Mercado
+    totais_mercados = {}
+    for col in colunas_mercado:
+        nome_limpo = col.replace(" (R$)", "")
+        totais_mercados[nome_limpo] = (df_editado["Quantidade"] * df_editado[col]).sum()
 
-    menor_total_unico = min(total_a, total_b, total_c)
-    economia_dividida = menor_total_unico - total_dividido
+    total_otimizado = df_editado["Subtotal Otimizado (R$)"].sum()
 
-    # Exibição de Indicadores (KPIs)
-    st.subheader("2. Resumo da Simulação")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total no Mercado A", f"R$ {total_a:.2f}")
-    col2.metric("Total no Mercado B", f"R$ {total_b:.2f}")
-    col3.metric("Total no Mercado C", f"R$ {total_c:.2f}")
-    col4.metric("Total Fracionado (Economia Máxima)", f"R$ {total_dividido:.2f}", delta=f"-R$ {economia_dividida:.2f} de Poupança", delta_color="normal")
+    # Menor valor comprando tudo em 1 único lugar
+    totais_validos = [v for v in totais_mercados.values() if v > 0]
+    menor_total_unico = min(totais_validos) if totais_validos else 0
+    economia = (menor_total_unico - total_otimizado) if menor_total_unico > total_otimizado else 0.0
 
-    # Gráfico comparativo nativo do Streamlit
-    st.subheader("3. Comparativo Visual de Custos")
-    df_grafico = pd.DataFrame({
-        "Custo Total (R$)": [total_a, total_b, total_c, total_dividido]
-    }, index=["Mercado A", "Mercado B", "Mercado C", "Compras Divididas"])
+    # Resumo visual (KPIs)
+    st.subheader("2. Resumo Comparativo")
+    cols = st.columns(len(totais_mercados) + 1)
     
-    st.bar_chart(df_grafico)
-
-    # Recomendações de Compra
-    st.subheader("4. Guia de Compra Item a Item")
-    st.dataframe(
-        df_editado[["Item", "Quantidade", "Melhor Opção", "Menor Preço Unid.", "Total Otimizado"]],
-        use_container_width=True
-    )
+    idx = 0
+    for mercado, total in totais_mercados.items():
+        cols[idx].metric(f"Total no {mercado}",
