@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
 # Configuração da página
 st.set_page_config(
@@ -78,21 +77,13 @@ if not df_editado.empty:
     col3.metric("Total no Mercado C", f"R$ {total_c:.2f}")
     col4.metric("Total Fracionado (Economia Máxima)", f"R$ {total_dividido:.2f}", delta=f"-R$ {economia_dividida:.2f} de Poupança", delta_color="normal")
 
-    # Gráfico comparativo
+    # Gráfico comparativo nativo do Streamlit
     st.subheader("3. Comparativo Visual de Custos")
     df_grafico = pd.DataFrame({
-        "Opção de Compra": ["Mercado A", "Mercado B", "Mercado C", "Compras Divididas"],
         "Custo Total (R$)": [total_a, total_b, total_c, total_dividido]
-    })
-    fig = px.bar(
-        df_grafico,
-        x="Opção de Compra",
-        y="Custo Total (R$)",
-        color="Opção de Compra",
-        text_auto=".2f",
-        title="Comparação de Custo Total por Estabelecimento"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    }, index=["Mercado A", "Mercado B", "Mercado C", "Compras Divididas"])
+    
+    st.bar_chart(df_grafico)
 
     # Recomendações de Compra
     st.subheader("4. Guia de Compra Item a Item")
